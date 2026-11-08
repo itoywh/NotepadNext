@@ -31,6 +31,8 @@
 #include <QSaveFile>
 #include <QTextCodec>
 
+#include "TextEncodingXattr.h"
+
 
 const int CHUNK_SIZE = 1024 * 1024 * 4; // Not sure what is best
 
@@ -129,13 +131,109 @@ static bool decodesAsGb18030WithCjk(const QByteArray &data)
     return longestRun >= 3;
 }
 
+// Heuristic for UTF-16/UTF-32 without a BOM, i.e. text whose "high" bytes are
+// mostly zero. That null-byte signature must be checked before the strict UTF-8
+// probe because U+0000..U+007F in a wide encoding is still valid UTF-8 (with
+// embedded NULs), and it is a much stronger signal than anything uchardet can
+// guess from a legacy code page. A candidate additionally has to decode into
+// clean printable text, which is what keeps binary files out.
+static QString detectNoBomUnicode(const QByteArray &data)
+{
+    struct Candidate {
+        const char *spec;
+        QStringDecoder::Encoding enc;
+        int unit;
+        int highMask;      // bit per byte offset inside a unit: the zero high bytes
+        double minHighZero; // how many of those must actually be zero
+    };
+    static const Candidate candidates[] = {
+        // Code points below U+0100 leave the high byte at zero, so mixed
+        // Latin/CJK text only reaches roughly 0.5. A legacy code page such as
+        // GB18030 never contains 0x00 at all, so 0.5 already separates them
+        // safely. UTF-32 keeps two of its three high bytes zero even for CJK
+        // (U+4E2D is 2D 4E 00 00), hence just under two thirds.
+        { "UTF-16LE", QStringDecoder::Utf16LE, 2, 0b10,   0.50 },
+        { "UTF-16BE", QStringDecoder::Utf16BE, 2, 0b01,   0.50 },
+        { "UTF-32LE", QStringDecoder::Utf32LE, 4, 0b1110, 0.55 },
+        { "UTF-32BE", QStringDecoder::Utf32BE, 4, 0b0111, 0.55 },
+    };
+
+    const qsizetype size = data.size();
+    if (size < 4)
+        return QString();
+
+    // Count bytes per phase (mod 4) over a bounded sample; 4 is a multiple of
+    // both unit sizes, so the same counts serve the UTF-16 and UTF-32 checks.
+    const qsizetype sample = qMin<qsizetype>(size, 64 * 1024);
+    qsizetype byteCount[4] = { 0, 0, 0, 0 };
+    qsizetype nullCount[4] = { 0, 0, 0, 0 };
+    for (qsizetype i = 0; i < sample; ++i) {
+        const int phase = static_cast<int>(i % 4);
+        ++byteCount[phase];
+        if (data.at(i) == 0)
+            ++nullCount[phase];
+    }
+
+    for (const Candidate &c : candidates) {
+        if (size % c.unit != 0)
+            continue;
+
+        qsizetype nulls = 0;
+        qsizetype total = 0;
+        for (int phase = 0; phase < c.unit; ++phase) {
+            if ((c.highMask >> phase) & 1) {
+                nulls += nullCount[phase];
+                total += byteCount[phase];
+            }
+        }
+        if (total == 0 || static_cast<double>(nulls) / static_cast<double>(total) < c.minHighZero)
+            continue;
+
+        QStringDecoder decoder(c.enc);
+        const QString text = decoder(QByteArrayView(data.constData(), size));
+        if (decoder.hasError())
+            continue;
+
+        // Wide text is never interleaved with U+0000 or C0/C1 control codes. A
+        // wrong guess (e.g. reading UTF-32 as UTF-16) leaves exactly those, so
+        // this is what rejects the false positive instead of the null ratio.
+        qsizetype printable = 0;
+        bool clean = true;
+        for (const QChar ch : text) {
+            const ushort v = ch.unicode();
+            if (v == u'\t' || v == u'\n' || v == u'\r') {
+                ++printable;
+                continue;
+            }
+            if (v < 0x20 || (v >= 0x7F && v < 0xA0) || v == 0xFFFD) {
+                clean = false;
+                break;
+            }
+            ++printable;
+        }
+        if (!clean || printable < 2)
+            continue;
+
+        return QString::fromLatin1(c.spec);
+    }
+    return QString();
+}
+
 // Return an Encoding-menu spec, or an empty string when the data is UTF-8.
 // Strict UTF-8 must be tried first: uchardet happily reports a legacy code
-// page for short or mostly-ASCII UTF-8 samples.
+// page for short or mostly-ASCII UTF-8 samples. The one exception is wide text
+// without a BOM, which must be recognised *before* that probe (see below).
 static QString detectCharset(const QByteArray &data)
 {
     if (data.isEmpty())
         return QString();
+
+    // U+0000..U+007F encoded as UTF-16/UTF-32 is still valid UTF-8 with embedded
+    // NULs, so the strict probe below would label such a file "UTF-8". The
+    // null-byte signature is far more specific than that, so look for it first.
+    const QString wide = detectNoBomUnicode(data);
+    if (!wide.isEmpty())
+        return wide;
 
     {
         QStringDecoder decoder(QStringDecoder::Utf8);
@@ -531,6 +629,7 @@ QFileDevice::FileError ScintillaNext::save()
         // If this was a temporary file, make sure it is not any more
         setTemporary(false);
 
+        TextEncodingXattr::writeSpec(path, encoding());
         emit saved();
     }
 
@@ -609,6 +708,7 @@ QFileDevice::FileError ScintillaNext::saveAs(const QString &newFilePath)
         // If this was a temporary file, make sure it is not any more
         setTemporary(false);
 
+        TextEncodingXattr::writeSpec(newFilePath, encoding());
         emit saved();
 
         if (isRenamed) {
@@ -622,7 +722,10 @@ QFileDevice::FileError ScintillaNext::saveAs(const QString &newFilePath)
 QFileDevice::FileError ScintillaNext::saveCopyAs(const QString &filePath)
 {
     const QByteArray data = toFileBytes(QByteArray::fromRawData((char*)characterPointer(), textLength()));
-    return writeToDisk(data, filePath, bomType);
+    const QFileDevice::FileError rc = writeToDisk(data, filePath, bomType);
+    if (rc == QFileDevice::NoError)
+        TextEncodingXattr::writeSpec(filePath, encoding());
+    return rc;
 }
 
 bool ScintillaNext::rename(const QString &newFilePath)
@@ -820,6 +923,7 @@ bool ScintillaNext::readFromDisk(QFile &file)
     QByteArray chunk;
     qint64 bytesRead;
     QStringDecoder decoder;
+    QStringDecoder unicodeDecoder; // for no-BOM UTF-16/UTF-32, kept across chunks
     QStringEncoder encoder = QStringEncoder(QStringEncoder::Utf8);
 
     // A ConverterState must survive across chunks: a 4 MB read boundary can
@@ -853,6 +957,8 @@ bool ScintillaNext::readFromDisk(QFile &file)
 
             if (!forcedReadSpec.isEmpty()) {
                 // Reinterpret: honour the user's choice instead of detecting.
+                // The menu only offers Reinterpret for BOM-less specs, so the
+                // offset computed from the detected BOM stays valid here.
                 applyEncodingSpec(forcedReadSpec);
             } else {
                 switch (bomType) {
@@ -871,17 +977,31 @@ bool ScintillaNext::readFromDisk(QFile &file)
                     offset = 3;
                     break;
 
-                default:
-                    // No BOM: strict UTF-8 first, then uchardet.
-                    applyEncodingSpec(detectCharset(chunk));
+                default: {
+                    // No BOM: a macOS TextEncoding xattr outranks detection
+                    // (CotEditor's order is BOM -> xattr -> candidates), then
+                    // uchardet / wide-text heuristics run.
+                    const QString xattrSpec = TextEncodingXattr::readSpec(file.fileName());
+                    if (xattrSpec.isEmpty())
+                        applyEncodingSpec(detectCharset(chunk));
+                    else
+                        applyEncodingSpec(xattrSpec);
                     break;
+                }
                 }
             }
 
             if (!codecName.isEmpty()) {
-                fileCodec = QTextCodec::codecForName(codecName.toLatin1());
-                if (!fileCodec)
-                    qWarning("No QTextCodec for \"%s\"; reading as UTF-8", qUtf8Printable(codecName));
+                if (EncodingSpecs::isUnicodeEncoding(codecName)) {
+                    // The wide encodings go through QStringConverter; do not
+                    // also build a QTextCodec for them or the two paths would
+                    // disagree about who decodes the chunk.
+                    unicodeDecoder = EncodingSpecs::makeUnicodeDecoder(codecName);
+                } else {
+                    fileCodec = QTextCodec::codecForName(codecName.toLatin1());
+                    if (!fileCodec)
+                        qWarning("No QTextCodec for \"%s\"; reading as UTF-8", qUtf8Printable(codecName));
+                }
             }
 
             savedEncodingSpec = encoding();
@@ -891,6 +1011,12 @@ bool ScintillaNext::readFromDisk(QFile &file)
 
         if (bomType == BomType::Utf16BE || bomType == BomType::Utf16LE) {
             QString text = decoder(input);
+            QByteArray utf8 = encoder(text);
+
+            appendText(utf8.size(), utf8.constData());
+        } else if (!codecName.isEmpty() && EncodingSpecs::isUnicodeEncoding(codecName)) {
+            // No-BOM UTF-16/UTF-32: decoded with QStringConverter, not QTextCodec.
+            QString text = unicodeDecoder(input);
             QByteArray utf8 = encoder(text);
 
             appendText(utf8.size(), utf8.constData());
@@ -910,6 +1036,11 @@ bool ScintillaNext::readFromDisk(QFile &file)
     // original bytes are gone. Remember the count: saving re-encodes the text,
     // which would write replacement characters over those bytes.
     decodeInvalidChars = codecState.invalidChars;
+    // The wide decoder only exposes a flag, not a byte count. One is enough to
+    // make the pre-save confirmation fire instead of silently overwriting the
+    // replacement characters it produced.
+    if (unicodeDecoder.hasError())
+        decodeInvalidChars = qMax(decodeInvalidChars, 1);
 
     file.close();
 
@@ -1007,6 +1138,15 @@ QByteArray ScintillaNext::toFileBytes(const QByteArray &utf8) const
     if (codecName.isEmpty())
         return utf8;
 
+    if (EncodingSpecs::isUnicodeEncoding(codecName)) {
+        // UTF-16/UTF-32 without a BOM: encode with QStringConverter and let
+        // writeToDisk() write the bytes verbatim (its BOM branch only fires for
+        // the *BOM variants, whose codecName is empty).
+        QStringEncoder enc = EncodingSpecs::makeUnicodeEncoder(codecName);
+        const QString text = QString::fromUtf8(utf8);
+        return enc(text);
+    }
+
     QTextCodec *codec = QTextCodec::codecForName(codecName.toLatin1());
     if (!codec) {
         qWarning("No QTextCodec for \"%s\"; writing UTF-8 instead", qUtf8Printable(codecName));
@@ -1026,11 +1166,7 @@ QByteArray ScintillaNext::toFileBytes(const QByteArray &utf8) const
 bool ScintillaNext::canBeConvertedTo(const QString &spec)
 {
     // The Unicode specs can represent anything Scintilla stores (UTF-8).
-    const bool unicode = spec.isEmpty()
-        || spec == QStringLiteral("UTF-8")
-        || spec == QStringLiteral("UTF-8 BOM")
-        || spec == QStringLiteral("UTF-16LE BOM")
-        || spec == QStringLiteral("UTF-16BE BOM");
+    const bool unicode = spec.isEmpty() || EncodingSpecs::isUnicodeEncoding(spec);
     if (unicode)
         return true;
 

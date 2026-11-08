@@ -198,6 +198,12 @@ private:
     QActionGroup *encodingActionGroup = Q_NULLPTR;
     QList<QAction *> injectedEncodingActions;
 
+    QMenu *userLanguagesMenu = Q_NULLPTR;
+    QList<QMenu *> generatedLanguageMenus;
+
+    void populateLanguageMenu();
+    void rebuildLanguageMenu();
+
     TabsQuickActionsBar *tabsQuickActionsBar = Q_NULLPTR;
 
     //NppImporter *npp;

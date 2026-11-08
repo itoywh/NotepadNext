@@ -15,6 +15,7 @@ qt_add_executable(NotepadNext
 	EditorManager.h
 	EditorPrintPreviewRenderer.h
 	EncodingSpecs.h
+	TextEncodingXattr.h
 	FileDialogHelpers.h
 	Finder.h
 	FocusWatcher.h
@@ -88,6 +89,7 @@ qt_add_executable(NotepadNext
 	SciIFaceTable.cpp
 	ScintillaCommenter.cpp
 	ScintillaNext.cpp
+	TextEncodingXattr.cpp
 	SearchResultHighlighterDelegate.cpp
 	SearchResultsCollector.cpp
 	SelectionTracker.cpp

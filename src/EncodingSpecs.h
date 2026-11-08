@@ -21,19 +21,25 @@
 #define ENCODINGSPECS_H
 
 #include <QString>
+#include <QStringDecoder>
+#include <QStringEncoder>
 
 
 // Single source of truth for the Encoding menu and for normalizing the
 // charset names reported by uchardet. A "-" entry is a menu separator and the
-// list ends with nullptr. UTF-16/UTF-32 without a BOM and stateful encodings
-// such as ISO-2022-JP are deliberately absent: the document BOM model only
-// understands None / Utf8 / Utf16LE / Utf16BE.
+// list ends with nullptr. The document BOM model understands None / Utf8 /
+// Utf16LE / Utf16BE; in addition the no-BOM Unicode encodings (UTF-16LE,
+// UTF-16BE, UTF-32LE, UTF-32BE) are offered so a file saved without a BOM can
+// be Reinterpreted/Converted, and detectCharset() can recognise them. Stateful
+// encodings such as ISO-2022-JP stay absent: they cannot be round-tripped with
+// a stateless QTextCodec.
 namespace EncodingSpecs {
 
 inline const char *const *menu()
 {
     static const char *const specs[] = {
         "UTF-8", "UTF-8 BOM", "UTF-16LE BOM", "UTF-16BE BOM",
+        "UTF-16LE", "UTF-16BE", "UTF-32LE", "UTF-32BE",
         "-",
         "GB18030", "GBK", "GB2312", "Big5", "Big5-HKSCS", "Big5-ETen",
         "-",
@@ -113,6 +119,47 @@ inline QString canonical(const QString &name)
     // readFromDisk() take its "No conversion necessary" branch and feed raw
     // legacy bytes to Scintilla as if they were UTF-8.
     return QString();
+}
+
+
+// The Unicode encodings handled by QStringConverter (QStringDecoder /
+// QStringEncoder) instead of QTextCodec. QTextCodec in Qt6 only knows UTF-8 and
+// the legacy code pages, so the UTF-16/UTF-32 family must go through the
+// QStringConverter path. This includes the BOM variants because their on-disk
+// bytes are still produced by a QStringEncoder.
+inline bool isUnicodeEncoding(const QString &spec)
+{
+    return spec == QLatin1String("UTF-8")
+        || spec == QLatin1String("UTF-8 BOM")
+        || spec == QLatin1String("UTF-16LE") || spec == QLatin1String("UTF-16LE BOM")
+        || spec == QLatin1String("UTF-16BE") || spec == QLatin1String("UTF-16BE BOM")
+        || spec == QLatin1String("UTF-32LE") || spec == QLatin1String("UTF-32BE");
+}
+
+inline QStringDecoder makeUnicodeDecoder(const QString &spec)
+{
+    if (spec == QLatin1String("UTF-16LE") || spec == QLatin1String("UTF-16LE BOM"))
+        return QStringDecoder(QStringDecoder::Utf16LE);
+    if (spec == QLatin1String("UTF-16BE") || spec == QLatin1String("UTF-16BE BOM"))
+        return QStringDecoder(QStringDecoder::Utf16BE);
+    if (spec == QLatin1String("UTF-32LE"))
+        return QStringDecoder(QStringDecoder::Utf32LE);
+    if (spec == QLatin1String("UTF-32BE"))
+        return QStringDecoder(QStringDecoder::Utf32BE);
+    return QStringDecoder(QStringDecoder::Utf8);
+}
+
+inline QStringEncoder makeUnicodeEncoder(const QString &spec)
+{
+    if (spec == QLatin1String("UTF-16LE") || spec == QLatin1String("UTF-16LE BOM"))
+        return QStringEncoder(QStringEncoder::Utf16LE);
+    if (spec == QLatin1String("UTF-16BE") || spec == QLatin1String("UTF-16BE BOM"))
+        return QStringEncoder(QStringEncoder::Utf16BE);
+    if (spec == QLatin1String("UTF-32LE"))
+        return QStringEncoder(QStringEncoder::Utf32LE);
+    if (spec == QLatin1String("UTF-32BE"))
+        return QStringEncoder(QStringEncoder::Utf32BE);
+    return QStringEncoder(QStringEncoder::Utf8);
 }
 
 } // namespace EncodingSpecs
