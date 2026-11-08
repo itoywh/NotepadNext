@@ -148,14 +148,18 @@ static QString detectNoBomUnicode(const QByteArray &data)
     };
     static const Candidate candidates[] = {
         // Code points below U+0100 leave the high byte at zero, so mixed
-        // Latin/CJK text only reaches roughly 0.5. A legacy code page such as
-        // GB18030 never contains 0x00 at all, so 0.5 already separates them
-        // safely. UTF-32 keeps two of its three high bytes zero even for CJK
-        // (U+4E2D is 2D 4E 00 00), hence just under two thirds.
+        // Latin/CJK text only reaches roughly 0.5 (U+4E2D is 2D 4E in LE, i.e.
+        // its high byte is *not* zero). A legacy code page such as GB18030
+        // never contains 0x00 at all, so 0.5 already separates the two.
         { "UTF-16LE", QStringDecoder::Utf16LE, 2, 0b10,   0.50 },
         { "UTF-16BE", QStringDecoder::Utf16BE, 2, 0b01,   0.50 },
-        { "UTF-32LE", QStringDecoder::Utf32LE, 4, 0b1110, 0.55 },
-        { "UTF-32BE", QStringDecoder::Utf32BE, 4, 0b0111, 0.55 },
+        // UTF-32 has to be gated on its most significant bytes only. Testing
+        // all three "high" bytes makes the LE reading match BE data as well:
+        // UTF-32BE 'N' is 00 00 00 4E, i.e. 0x4E000000 when read as LE, whose
+        // low three bytes are 00 00 00. The MSB is the one byte that tells the
+        // two byte orders apart, so that is what gets counted.
+        { "UTF-32LE", QStringDecoder::Utf32LE, 4, 0b1100, 0.95 },
+        { "UTF-32BE", QStringDecoder::Utf32BE, 4, 0b0011, 0.95 },
     };
 
     const qsizetype size = data.size();
@@ -214,6 +218,8 @@ static QString detectNoBomUnicode(const QByteArray &data)
         if (!clean || printable < 2)
             continue;
 
+        qInfo("Reading as %s: NUL pattern matched and the data decodes into clean text",
+              c.spec);
         return QString::fromLatin1(c.spec);
     }
     return QString();
