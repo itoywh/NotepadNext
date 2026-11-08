@@ -20,6 +20,7 @@
 
 #include <QApplication>
 #include <QFont>
+#include <QFontDatabase>
 
 #define CREATE_SETTING(group, name, lname, type, default) \
 ApplicationSetting<type> name{#group "/" #name, default};\
@@ -67,6 +68,11 @@ CREATE_SETTING(Editor, ShowIndentGuide, showIndentGuide, bool, true);
 CREATE_SETTING(Editor, WordWrap, wordWrap, bool, false)
 CREATE_SETTING(Editor, FontName, fontName, QString, QStringLiteral("Courier New"))
 CREATE_SETTING(Editor, FontSize, fontSize, int, []() { return qApp->font().pointSize() + 2; })
+CREATE_SETTING(Editor, StandardFontName, standardFontName, QString, []() { return QFontDatabase::systemFont(QFontDatabase::GeneralFont).family(); })
+CREATE_SETTING(Editor, StandardFontSize, standardFontSize, int, []() { return qApp->font().pointSize() + 2; })
+CREATE_SETTING(Editor, MonospacedAntialias, monospacedAntialias, bool, true)
+CREATE_SETTING(Editor, StandardAntialias, standardAntialias, bool, true)
+CREATE_SETTING(Editor, ProportionalLanguages, proportionalLanguages, QString, QStringLiteral("Text, Markdown, CUE Sheet"))
 CREATE_SETTING(Editor, LineHeight, lineHeight, double, 1.30)
 CREATE_SETTING(Editor, AdditionalWordChars, additionalWordChars, QString, QStringLiteral(""));
 CREATE_SETTING(Editor, DefaultEOLMode, defaultEOLMode, QString, QStringLiteral(""))

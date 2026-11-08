@@ -23,9 +23,10 @@
 #include <QObject>
 #include <QPointer>
 
+#include "ScintillaNext.h"
+
 
 class ApplicationSettings;
-class ScintillaNext;
 
 class EditorManager : public QObject
 {
@@ -40,6 +41,12 @@ public:
     ScintillaNext *getEditorByFilePath(const QString &filePath);
 
     void manageEditor(ScintillaNext *editor);
+
+    // Resolve the font for one document, honouring its per-document override
+    // and the language whitelist, then reapply the line-height multiple.
+    void applyEditorFont(ScintillaNext *editor);
+    void setEditorFontType(ScintillaNext *editor, ScintillaNext::FontType type);
+    void refreshAllFonts();
 
 signals:
     void editorCreated(ScintillaNext *editor);

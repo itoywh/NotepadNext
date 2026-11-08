@@ -121,6 +121,7 @@ public slots:
     void detectLanguage(ScintillaNext *editor);
 
     void setLanguage(ScintillaNext *editor, const QString &languageName);
+    void setupEditorFontMenu();
 
     void bringWindowToForeground();
     void focusIn();

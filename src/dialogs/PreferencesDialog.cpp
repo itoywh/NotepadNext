@@ -26,7 +26,9 @@
 #include <QButtonGroup>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QLineEdit>
 #include <QMessageBox>
+#include <QSignalBlocker>
 
 
 PreferencesDialog::PreferencesDialog(ApplicationSettings *settings, QWidget *parent) :
@@ -71,7 +73,24 @@ PreferencesDialog::PreferencesDialog(ApplicationSettings *settings, QWidget *par
 
     MapSettingToCheckBox(ui->checkBoxExitOnLastTabClosed, &ApplicationSettings::exitOnLastTabClosed, &ApplicationSettings::setExitOnLastTabClosed, &ApplicationSettings::exitOnLastTabClosedChanged);
 
-    ui->fcbDefaultFont->setCurrentFont(QFont(settings->fontName()));
+    // Two independent font pairs, mirroring CotEditor's "standard" and
+    // "monospaced" settings. Only fixed-pitch fonts are offered for code.
+    {
+        QSignalBlocker b1(ui->fcbDefaultFont);
+        QSignalBlocker b2(ui->fcbStandardFont);
+        QSignalBlocker b3(ui->spbDefaultFontSize);
+        QSignalBlocker b4(ui->spbStandardFontSize);
+        QSignalBlocker b5(ui->edtProportionalLanguages);
+
+        ui->fcbDefaultFont->setFontFilters(QFontComboBox::MonospacedFonts);
+        ui->fcbDefaultFont->setCurrentFont(QFont(settings->fontName()));
+        ui->spbDefaultFontSize->setValue(settings->fontSize());
+
+        ui->fcbStandardFont->setCurrentFont(QFont(settings->standardFontName()));
+        ui->spbStandardFontSize->setValue(settings->standardFontSize());
+        ui->edtProportionalLanguages->setText(settings->proportionalLanguages());
+    }
+
     connect(ui->fcbDefaultFont, &QFontComboBox::currentFontChanged, this, [=, this](const QFont &f) {
         settings->setFontName(f.family());
     });
@@ -79,9 +98,26 @@ PreferencesDialog::PreferencesDialog(ApplicationSettings *settings, QWidget *par
         ui->fcbDefaultFont->setCurrentFont(QFont(fontName));
     });
 
-    ui->spbDefaultFontSize->setValue(settings->fontSize());
     connect(ui->spbDefaultFontSize, QOverload<int>::of(&QSpinBox::valueChanged), settings, &ApplicationSettings::setFontSize);
     connect(settings, &ApplicationSettings::fontSizeChanged, ui->spbDefaultFontSize, &QSpinBox::setValue);
+
+    connect(ui->fcbStandardFont, &QFontComboBox::currentFontChanged, this, [=, this](const QFont &f) {
+        settings->setStandardFontName(f.family());
+    });
+    connect(settings, &ApplicationSettings::standardFontNameChanged, this, [=, this](QString fontName){
+        ui->fcbStandardFont->setCurrentFont(QFont(fontName));
+    });
+
+    connect(ui->spbStandardFontSize, QOverload<int>::of(&QSpinBox::valueChanged), settings, &ApplicationSettings::setStandardFontSize);
+    connect(settings, &ApplicationSettings::standardFontSizeChanged, ui->spbStandardFontSize, &QSpinBox::setValue);
+
+    MapSettingToCheckBox(ui->chkMonospacedAntialias, &ApplicationSettings::monospacedAntialias, &ApplicationSettings::setMonospacedAntialias, &ApplicationSettings::monospacedAntialiasChanged);
+    MapSettingToCheckBox(ui->chkStandardAntialias, &ApplicationSettings::standardAntialias, &ApplicationSettings::setStandardAntialias, &ApplicationSettings::standardAntialiasChanged);
+
+    connect(ui->edtProportionalLanguages, &QLineEdit::editingFinished, this, [=, this]() {
+        settings->setProportionalLanguages(ui->edtProportionalLanguages->text());
+    });
+    connect(settings, &ApplicationSettings::proportionalLanguagesChanged, ui->edtProportionalLanguages, &QLineEdit::setText);
 
     ui->spbLineHeight->setRange(1.0, 2.0);
     ui->spbLineHeight->setDecimals(2);

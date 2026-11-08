@@ -129,27 +129,74 @@
          <item>
           <widget class="QGroupBox" name="groupBox">
            <property name="title">
-            <string>Default Font</string>
+            <string>Editor Fonts</string>
            </property>
            <layout class="QFormLayout" name="formLayout_2">
-            <item row="1" column="0">
-             <widget class="QLabel" name="label_2">
+            <item row="0" column="0">
+             <widget class="QLabel" name="labelStandardFont">
               <property name="text">
-               <string>Font</string>
+               <string>Standard Font</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QFontComboBox" name="fcbStandardFont"/>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="labelStandardFontSize">
+              <property name="text">
+               <string>Standard Size</string>
               </property>
              </widget>
             </item>
             <item row="1" column="1">
-             <widget class="QFontComboBox" name="fcbDefaultFont"/>
+             <widget class="QSpinBox" name="spbStandardFontSize">
+              <property name="suffix">
+               <string>pt</string>
+              </property>
+              <property name="minimum">
+               <number>2</number>
+              </property>
+              <property name="maximum">
+               <number>48</number>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="labelStandardAntialias">
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QCheckBox" name="chkStandardAntialias">
+              <property name="text">
+               <string>Antialiasing (standard font)</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
             </item>
             <item row="3" column="0">
-             <widget class="QLabel" name="label_3">
+             <widget class="QLabel" name="labelMonospacedFont">
               <property name="text">
-               <string>Font Size</string>
+               <string>Monospaced Font</string>
               </property>
              </widget>
             </item>
             <item row="3" column="1">
+             <widget class="QFontComboBox" name="fcbDefaultFont"/>
+            </item>
+            <item row="4" column="0">
+             <widget class="QLabel" name="labelMonospacedFontSize">
+              <property name="text">
+               <string>Monospaced Size</string>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="1">
              <widget class="QSpinBox" name="spbDefaultFontSize">
               <property name="suffix">
                <string>pt</string>
@@ -162,14 +209,45 @@
               </property>
              </widget>
             </item>
-            <item row="4" column="0">
+            <item row="5" column="0">
+             <widget class="QLabel" name="labelMonospacedAntialias">
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item row="5" column="1">
+             <widget class="QCheckBox" name="chkMonospacedAntialias">
+              <property name="text">
+               <string>Antialiasing (monospaced font)</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="6" column="0">
+             <widget class="QLabel" name="labelProportionalLanguages">
+              <property name="text">
+               <string>Prose Languages</string>
+              </property>
+             </widget>
+            </item>
+            <item row="6" column="1">
+             <widget class="QLineEdit" name="edtProportionalLanguages">
+              <property name="toolTip">
+               <string>Comma-separated language names that use the standard (proportional) font. All other languages use the monospaced font.</string>
+              </property>
+             </widget>
+            </item>
+            <item row="7" column="0">
              <widget class="QLabel" name="labelLineHeight">
               <property name="text">
                <string>Line Height</string>
               </property>
              </widget>
             </item>
-            <item row="4" column="1">
+            <item row="7" column="1">
              <widget class="QDoubleSpinBox" name="spbLineHeight">
               <property name="toolTip">
                <string>Line spacing as a multiple of the font's natural line height. 1.00 is the original compact spacing; 1.30 matches CotEditor's default.</string>

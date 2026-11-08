@@ -377,6 +377,10 @@ void NotepadNextApplication::setEditorLanguage(ScintillaNext *editor, const QStr
     getLuaState()->setVariable("skip_tabwidth", skipTabWidth);
 
     getLuaState()->execute("SetLanguage(languageName)");
+
+    // The language decides which of the two configured fonts this document
+    // uses, so re-resolve the font once SetLanguage() has finished styling.
+    editorManager->applyEditorFont(editor);
 }
 
 QStringList NotepadNextApplication::getLanguageKeywords(const QString &languageName) const

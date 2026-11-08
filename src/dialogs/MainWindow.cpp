@@ -27,6 +27,7 @@
 #include "UndoAction.h"
 #include "ui_MainWindow.h"
 
+#include <QActionGroup>
 #include <QFileDialog>
 #include <QMenu>
 #include <QMessageBox>
@@ -1026,6 +1027,7 @@ MainWindow::MainWindow(NotepadNextApplication *app) :
     ui->statusBar->setVisible(app->getSettings()->showStatusBar());
 
     setupLanguageMenu();
+    setupEditorFontMenu();
 
     applyStyleSheet();
 
@@ -1252,6 +1254,42 @@ void MainWindow::updateEncodingBasedUi(ScintillaNext *editor)
 
     currentAction->setChecked(true);
     injectedEncodingActions << currentAction << separator;
+}
+
+void MainWindow::setupEditorFontMenu()
+{
+    QMenu *fontMenu = new QMenu(tr("Editor Font"), ui->menuView);
+    QActionGroup *group = new QActionGroup(this);
+
+    QAction *autoAction = fontMenu->addAction(tr("&Automatic (by language)"));
+    QAction *standardAction = fontMenu->addAction(tr("&Standard Font"));
+    QAction *monospacedAction = fontMenu->addAction(tr("&Monospaced Font"));
+
+    QAction *actions[] = {autoAction, standardAction, monospacedAction};
+    for (QAction *action : actions) {
+        action->setCheckable(true);
+        group->addAction(action);
+    }
+
+    // Reflect the active tab whenever the menu opens instead of polling tabs.
+    connect(fontMenu, &QMenu::aboutToShow, this, [=, this]() {
+        const auto type = currentEditor() ? currentEditor()->fontType : ScintillaNext::FontType::Auto;
+        autoAction->setChecked(type == ScintillaNext::FontType::Auto);
+        standardAction->setChecked(type == ScintillaNext::FontType::Standard);
+        monospacedAction->setChecked(type == ScintillaNext::FontType::Monospaced);
+    });
+
+    auto setType = [=, this](ScintillaNext::FontType type) {
+        if (ScintillaNext *editor = currentEditor())
+            app->getEditorManager()->setEditorFontType(editor, type);
+    };
+
+    connect(autoAction, &QAction::triggered, this, [=, this]() { setType(ScintillaNext::FontType::Auto); });
+    connect(standardAction, &QAction::triggered, this, [=, this]() { setType(ScintillaNext::FontType::Standard); });
+    connect(monospacedAction, &QAction::triggered, this, [=, this]() { setType(ScintillaNext::FontType::Monospaced); });
+
+    ui->menuView->addSeparator();
+    ui->menuView->addMenu(fontMenu);
 }
 
 void MainWindow::setupLanguageMenu()

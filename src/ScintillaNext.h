@@ -143,6 +143,11 @@ public:
 
     void setFoldMarkers(const QString &type);
 
+    // Which of the two configured fonts this document uses. Auto resolves from
+    // the document's language; the other two are an explicit per-document override.
+    enum class FontType { Auto, Standard, Monospaced };
+    FontType fontType = FontType::Auto;
+
     QString languageName;
     QByteArray languageSingleLineComment;
 

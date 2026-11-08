@@ -396,6 +396,7 @@ void SessionManager::storeEditorViewDetails(ScintillaNext *editor, QSettings &se
 {
     settings.setValue("FirstVisibleLine", static_cast<int>(editor->firstVisibleLine() + 1)); // Keep it 1-based in the settings just for human-readability
     settings.setValue("CurrentPosition", static_cast<int>(editor->currentPos()));
+    settings.setValue("FontType", static_cast<int>(editor->fontType));
 
     BookMarkDecorator *decorator = editor->findChild<BookMarkDecorator*>(QString(), Qt::FindDirectChildrenOnly);
     if (decorator == Q_NULLPTR) {
@@ -415,6 +416,13 @@ void SessionManager::loadEditorViewDetails(ScintillaNext *editor, QSettings &set
 
     editor->setFirstVisibleLine(firstVisibleLine);
     editor->setEmptySelection(currentPosition);
+
+    // A manual font override is session-scoped, like CotEditor's per-window
+    // switch. Apply it now; a later language restore will re-resolve it.
+    if (settings.contains("FontType")) {
+        editor->fontType = static_cast<ScintillaNext::FontType>(settings.value("FontType").toInt());
+        app->getEditorManager()->applyEditorFont(editor);
+    }
 
     if (settings.contains("BookMarks"))
     {

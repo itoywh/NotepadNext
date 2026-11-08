@@ -18,6 +18,7 @@
 
 #include <QApplication>
 #include <QtGlobal>
+#include <QStringList>
 
 #include "ApplicationSettings.h"
 
@@ -64,6 +65,29 @@ void applyLineHeight(ScintillaNext *editor, double multiple)
 
     editor->setExtraAscent(extra / 2);
     editor->setExtraDescent(extra - extra / 2);
+}
+
+// Resolve which of the two configured fonts a document should use. An explicit
+// per-document override wins; otherwise only whitelisted (prose-like) languages
+// get the standard font, so code keeps monospaced column alignment.
+bool usesStandardFont(const ScintillaNext *editor, ApplicationSettings *settings)
+{
+    if (editor->fontType == ScintillaNext::FontType::Standard)
+        return true;
+    if (editor->fontType == ScintillaNext::FontType::Monospaced)
+        return false;
+
+    const QString language = editor->languageName;
+    if (language.isEmpty())
+        return false;
+
+    const QStringList names = settings->proportionalLanguages().split(QLatin1Char(','));
+    for (const QString &raw : names) {
+        const QString name = raw.trimmed();
+        if (!name.isEmpty() && name.compare(language, Qt::CaseInsensitive) == 0)
+            return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -130,23 +154,16 @@ EditorManager::EditorManager(ApplicationSettings *settings, QObject *parent)
         }
     });
 
-    connect(settings, &ApplicationSettings::fontNameChanged, this, [=, this](QString fontName){
-        for (auto &editor : getEditors()) {
-            for (int i = 0; i <= STYLE_MAX; ++i) {
-                editor->styleSetFont(i, fontName.toUtf8().data());
-            }
-        }
-        refreshLineHeight();
-    });
-
-    connect(settings, &ApplicationSettings::fontSizeChanged, this, [=, this](int fontSize){
-        for (auto &editor : getEditors()) {
-            for (int i = 0; i <= STYLE_MAX; ++i) {
-                editor->styleSetSize(i, fontSize);
-            }
-        }
-        refreshLineHeight();
-    });
+    // Every font-related setting re-resolves each document independently, so a
+    // preference change never makes one tab adopt another tab's font.
+    auto onFontSettingChanged = [=, this]() { refreshAllFonts(); };
+    connect(settings, &ApplicationSettings::fontNameChanged, this, onFontSettingChanged);
+    connect(settings, &ApplicationSettings::fontSizeChanged, this, onFontSettingChanged);
+    connect(settings, &ApplicationSettings::standardFontNameChanged, this, onFontSettingChanged);
+    connect(settings, &ApplicationSettings::standardFontSizeChanged, this, onFontSettingChanged);
+    connect(settings, &ApplicationSettings::monospacedAntialiasChanged, this, onFontSettingChanged);
+    connect(settings, &ApplicationSettings::standardAntialiasChanged, this, onFontSettingChanged);
+    connect(settings, &ApplicationSettings::proportionalLanguagesChanged, this, onFontSettingChanged);
 
     connect(settings, &ApplicationSettings::lineHeightChanged, this, [=, this](double){
         refreshLineHeight();
@@ -225,6 +242,46 @@ void EditorManager::manageEditor(ScintillaNext *editor)
     setupEditor(editor);
 
     emit editorCreated(editor);
+}
+
+void EditorManager::applyEditorFont(ScintillaNext *editor)
+{
+    if (!editor)
+        return;
+
+    const bool standard = usesStandardFont(editor, settings);
+    const QString fontName = standard ? settings->standardFontName() : settings->fontName();
+    const int fontSize = standard ? settings->standardFontSize() : settings->fontSize();
+    const bool antialias = standard ? settings->standardAntialias() : settings->monospacedAntialias();
+    const QByteArray font = fontName.toUtf8();
+
+    for (int i = 0; i <= STYLE_MAX; ++i) {
+        editor->styleSetFont(i, font.constData());
+        editor->styleSetSize(i, fontSize);
+    }
+
+    // extraFontFlag lives on the view's ViewStyle, so it is per editor view
+    // (shared by all styles in that view, but not across documents).
+    editor->setFontQuality(antialias ? SC_EFF_QUALITY_ANTIALIASED : SC_EFF_QUALITY_NON_ANTIALIASED);
+
+    // extraAscent/extraDescent are absolute pixels derived from these metrics.
+    applyLineHeight(editor, settings->lineHeight());
+}
+
+void EditorManager::setEditorFontType(ScintillaNext *editor, ScintillaNext::FontType type)
+{
+    if (!editor || editor->fontType == type)
+        return;
+
+    editor->fontType = type;
+    applyEditorFont(editor);
+}
+
+void EditorManager::refreshAllFonts()
+{
+    for (auto &editor : getEditors()) {
+        applyEditorFont(editor);
+    }
 }
 
 #ifdef Q_OS_MACOS
@@ -375,13 +432,11 @@ void EditorManager::setupEditor(ScintillaNext *editor)
 
     editor->styleSetFore(STYLE_DEFAULT, 0x000000);
     editor->styleSetBack(STYLE_DEFAULT, 0xFFFFFF);
-    editor->styleSetSize(STYLE_DEFAULT, settings->fontSize());
-    editor->styleSetFont(STYLE_DEFAULT, settings->fontName().toUtf8().data());
     editor->styleClearAll();
 
-    // Apply after the font styles are in place: the pixel extra is derived
-    // from the resulting font-only line height.
-    applyLineHeight(editor, settings->lineHeight());
+    // Resolve the font after styleClearAll() so it lands on every style, then
+    // derive the line-height extra from the resulting font metrics.
+    applyEditorFont(editor);
 
     editor->styleSetFore(STYLE_LINENUMBER, 0x808080);
     editor->styleSetBack(STYLE_LINENUMBER, 0xE4E4E4);

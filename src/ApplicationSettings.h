@@ -113,8 +113,15 @@ public:
     DEFINE_SETTING(ShowWrapSymbol, showWrapSymbol, bool)
     DEFINE_SETTING(ShowIndentGuide, showIndentGuide, bool)
     DEFINE_SETTING(WordWrap, wordWrap, bool);
+    // FontName/FontSize are the monospaced (code) font. The standard font is a
+    // second, independent pair used for prose-like documents.
     DEFINE_SETTING(FontName, fontName, QString);
     DEFINE_SETTING(FontSize, fontSize, int);
+    DEFINE_SETTING(StandardFontName, standardFontName, QString);
+    DEFINE_SETTING(StandardFontSize, standardFontSize, int);
+    DEFINE_SETTING(MonospacedAntialias, monospacedAntialias, bool);
+    DEFINE_SETTING(StandardAntialias, standardAntialias, bool);
+    DEFINE_SETTING(ProportionalLanguages, proportionalLanguages, QString);
     DEFINE_SETTING(LineHeight, lineHeight, double);
     DEFINE_SETTING(AdditionalWordChars, additionalWordChars, QString);
     DEFINE_SETTING(DefaultEOLMode, defaultEOLMode, QString)
