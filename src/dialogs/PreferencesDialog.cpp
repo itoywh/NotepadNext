@@ -24,6 +24,7 @@
 #include "ScintillaNext.h"
 
 #include <QButtonGroup>
+#include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QMessageBox>
 
@@ -81,6 +82,14 @@ PreferencesDialog::PreferencesDialog(ApplicationSettings *settings, QWidget *par
     ui->spbDefaultFontSize->setValue(settings->fontSize());
     connect(ui->spbDefaultFontSize, QOverload<int>::of(&QSpinBox::valueChanged), settings, &ApplicationSettings::setFontSize);
     connect(settings, &ApplicationSettings::fontSizeChanged, ui->spbDefaultFontSize, &QSpinBox::setValue);
+
+    ui->spbLineHeight->setRange(1.0, 2.0);
+    ui->spbLineHeight->setDecimals(2);
+    ui->spbLineHeight->setSingleStep(0.05);
+    ui->spbLineHeight->setSuffix(QStringLiteral("x"));
+    ui->spbLineHeight->setValue(settings->lineHeight());
+    connect(ui->spbLineHeight, QOverload<double>::of(&QDoubleSpinBox::valueChanged), settings, &ApplicationSettings::setLineHeight);
+    connect(settings, &ApplicationSettings::lineHeightChanged, ui->spbLineHeight, &QDoubleSpinBox::setValue);
 
     ui->comboBoxLineEndings->addItem(tr("System Default"), QString(""));
     ui->comboBoxLineEndings->addItem(tr("Windows (CR LF)"), ScintillaNext::eolModeToString(SC_EOL_CRLF));

@@ -162,6 +162,20 @@
               </property>
              </widget>
             </item>
+            <item row="4" column="0">
+             <widget class="QLabel" name="labelLineHeight">
+              <property name="text">
+               <string>Line Height</string>
+              </property>
+             </widget>
+            </item>
+            <item row="4" column="1">
+             <widget class="QDoubleSpinBox" name="spbLineHeight">
+              <property name="toolTip">
+               <string>Line spacing as a multiple of the font's natural line height. 1.00 is the original compact spacing; 1.30 matches CotEditor's default.</string>
+              </property>
+             </widget>
+            </item>
            </layout>
           </widget>
          </item>

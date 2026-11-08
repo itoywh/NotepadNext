@@ -17,6 +17,7 @@
  */
 
 #include <QApplication>
+#include <QtGlobal>
 
 #include "ApplicationSettings.h"
 
@@ -43,9 +44,43 @@ const int MARK_HIDELINESEND = 22;
 const int MARK_HIDELINESUNDERLINE = 21;
 
 
+namespace {
+
+// Scintilla measures a line as (ascent + extraAscent) + (descent + extraDescent),
+// and SCI_TEXTHEIGHT already returns that total. Recover the plain font height
+// before turning the configured multiple into pixels, otherwise each change
+// would compound on the extra space from the previous one. textHeight() calls
+// RefreshStyleData() internally, so it also reflects a just-changed font size.
+// Splitting the extra evenly keeps the baseline centred in the taller line,
+// matching how CotEditor distributes its lineHeightMultiple.
+void applyLineHeight(ScintillaNext *editor, double multiple)
+{
+    // These IFace accessors return sptr_t, so narrow before using qMax().
+    const int plainHeight = static_cast<int>(editor->textHeight(0)
+                                             - editor->extraAscent()
+                                             - editor->extraDescent());
+    const int fontHeight = qMax(1, plainHeight);
+    const int extra = qMax(0, qRound((multiple - 1.0) * fontHeight));
+
+    editor->setExtraAscent(extra / 2);
+    editor->setExtraDescent(extra - extra / 2);
+}
+
+} // namespace
+
+
 EditorManager::EditorManager(ApplicationSettings *settings, QObject *parent)
     : QObject(parent), settings(settings)
 {
+    // The pixel value depends on the font metrics, so reapply it whenever the
+    // font changes as well as when the multiple itself changes.
+    auto refreshLineHeight = [=, this]() {
+        const double multiple = settings->lineHeight();
+        for (auto &editor : getEditors()) {
+            applyLineHeight(editor, multiple);
+        }
+    };
+
     connect(this, &EditorManager::editorCreated, this, [=, this](ScintillaNext *editor) {
         connect(editor, &ScintillaNext::closed, this, [=, this]() {
             emit editorClosed(editor);
@@ -101,6 +136,7 @@ EditorManager::EditorManager(ApplicationSettings *settings, QObject *parent)
                 editor->styleSetFont(i, fontName.toUtf8().data());
             }
         }
+        refreshLineHeight();
     });
 
     connect(settings, &ApplicationSettings::fontSizeChanged, this, [=, this](int fontSize){
@@ -109,6 +145,11 @@ EditorManager::EditorManager(ApplicationSettings *settings, QObject *parent)
                 editor->styleSetSize(i, fontSize);
             }
         }
+        refreshLineHeight();
+    });
+
+    connect(settings, &ApplicationSettings::lineHeightChanged, this, [=, this](double){
+        refreshLineHeight();
     });
 
     connect(settings, &ApplicationSettings::urlHighlightingChanged, this, [=, this](bool b){
@@ -337,6 +378,10 @@ void EditorManager::setupEditor(ScintillaNext *editor)
     editor->styleSetSize(STYLE_DEFAULT, settings->fontSize());
     editor->styleSetFont(STYLE_DEFAULT, settings->fontName().toUtf8().data());
     editor->styleClearAll();
+
+    // Apply after the font styles are in place: the pixel extra is derived
+    // from the resulting font-only line height.
+    applyLineHeight(editor, settings->lineHeight());
 
     editor->styleSetFore(STYLE_LINENUMBER, 0x808080);
     editor->styleSetBack(STYLE_LINENUMBER, 0xE4E4E4);
